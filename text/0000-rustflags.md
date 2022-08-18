@@ -63,14 +63,14 @@ name = "foo"
 version = "0.1.0"
 ```
 
-cargo cli:
+cargo CLI:
 ```
 cargo test --rustflag=-Cinstrument-coverage
 ```
 
-will result in the following input:
+Output (lines have been removed for simplicity):
 ```
-Compiling foo v0.1.0 (D:\projects\foo)
+Compiling foo v0.1.0 (...)
      Running `rustc --crate-name foo --edition=2021 src\lib.rs --crate-type lib ... -Cinstrument-coverage`
      Running `rustc --crate-name foo --edition=2021 src\lib.rs --test ... -Cinstrument-coverage`
     Finished test [unoptimized + debuginfo] target(s) in 1.35s
@@ -83,12 +83,14 @@ test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fini
 ```
 
 Running this command will build the crate `foo` with the flag `-Cinstrument-coverage` passed to the invocation of rustc
-for crate `foo`. Dependencies such as the standard libraries and other upstream dependencies would not be instrumented
+for the crate `foo`. Dependencies such as the standard libraries and other upstream dependencies would not be instrumented
 saving on compilation time.
 
 ## --rustflag for a workspace
 
-When building a workspace with multiple members
+When building a workspace with multiple members, any `--rustflag=<RUSTFLAG>` options set will be passed to the invocation
+of the compiler for all members unless `workspace.default-members` manifest key has been set. In that case, only the default
+members being compiled will have the rustflags passed to rustc.
 
 
 # Reference-level explanation
