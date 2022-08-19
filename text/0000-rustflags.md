@@ -169,11 +169,26 @@ In the example above, the only invocation which does not include the user specif
 `rustdoc`. Since `rustdoc` flags are treated different than normal `rustflags`, the flags specifed through `--rustflag=<RUSTFLAG>`
 will not be passed to the invocation of `rustdoc`.
 
-## Build scripts and proc-macros
+## Build scripts
 
-The new `--rustflag=<RUSTFLAG>` feature will only be passed to targets that are not being compiled for the host. Build scripts and
-proc-macros which are being used a dependency for the current crate
+The new `--rustflag=<RUSTFLAG>` feature will not be passed to build scripts that are being compiled and run on the host. This currently
+out of scope for this RFC since rustc flags are treated differently for build scripts depending on cargo configuration settings as well
+as the target specified.
 
+## Integration with existing RUSTFLAGS
+
+In Cargo there exists numerous ways to specify which Rust compiler flags should be set when compiling a crate and its dependencies.
+
+1. `CARGO_ENCODED_RUSTFLAGS` environment variable
+2. `RUSTFLAGS` environment variable
+3. `target.*.rustflags` from the config (.cargo/config)
+4. `target.cfg(..).rustflags` from the config (.cargo/config)
+5. `host.*.rustflags` from the config (.cargo/config) if compiling a host artifact or without `--target`
+6. `build.rustflags` from the config (.cargo/config)
+7. `profile.rustflags` from the cargo manifest (Cargo.toml)
+
+The `--rustflag` values would be appended to set of rustflags calculated from the options listed above. If the same Rust compiler flags
+are specified multiple times through different means which are not allowed, a compiler error would be generated.
 
 # Drawbacks
 [drawbacks]: #drawbacks
@@ -198,11 +213,9 @@ cargo option would only affect the root crate or the members of the current work
 
 ## Alternatives
 
-### Alternative 1: existing build.rustflags manifest key
+### Alternative 1: existing RUSTFLAGS manifest keys
 
-### Alternative 2: existing RUSTFLAGS environment variable
-
-### Alternative 3: new build.<crate_name>.rustflags manifest key
+### Alternative 2: new build.<crate_name>.rustflags manifest key
 
 # Prior art
 [prior-art]: #prior-art
