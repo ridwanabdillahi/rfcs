@@ -63,13 +63,10 @@ name = "foo"
 version = "0.1.0"
 ```
 
-cargo CLI:
+cargo CLI (Output lines have been removed for simplicity):
 ```
 cargo test --rustflag=-Cinstrument-coverage
-```
 
-Output (lines have been removed for simplicity):
-```
 Compiling foo v0.1.0 (...)
      Running `rustc --crate-name foo --edition=2021 src\lib.rs --crate-type lib ... -Cinstrument-coverage`
      Running `rustc --crate-name foo --edition=2021 src\lib.rs --test ... -Cinstrument-coverage`
@@ -89,13 +86,93 @@ saving on compilation time.
 ## --rustflag for a workspace
 
 When building a workspace with multiple members, any `--rustflag=<RUSTFLAG>` options set will be passed to the invocation
-of the compiler for all members unless `workspace.default-members` manifest key has been set. In that case, only the default
-members being compiled will have the rustflags passed to rustc.
+of the Rust compiler for all members unless `workspace.default-members` manifest key has been set. In that case, only the default
+members being compiled will have the rustflag options specified passed through to rustc. For example:
 
+Cargo.toml:
+```toml
+[workspace]
+members = ["foo", "bar"]
+```
+
+cargo CLI (Output lines have been removed for simplicity):
+```
+cargo build --rustflag=-Cinstrument-coverage
+
+Compiling foo v0.1.0 (.../foo/foo)
+Compiling bar v0.1.0 (.../foo/bar)
+    Running `rustc --crate-name foo ... -Cinstrument-coverage`
+    Running `rustc --crate-name bar ... -Cinstrument-coverage`
+Finished dev [unoptimized + debuginfo] target(s) in 0.98s
+```
 
 # Reference-level explanation
 [reference-level-explanation]: #reference-level-explanation
 
+As mentioned above a new Cargo option, `--rustflag=<RUSTFLAG>`, would be added to several of the existing cargo subcommands.
+Those subcommands would be, `bench, build, check, run` and `test`. The `--rustflag=<RUSTFLAG>` option will require an `=`
+sign between the option name and the option value, due to the way Cargo parses the options passed to its subcommands. Cargo under
+the covers uses the `clap` crate to parse the command line invocation and set the relevant options passed to it. Since all rust
+compiler flags start with a `-`, without the `=` delimitter `clap` parses the rustc flag as a new Cargo flag instead leading to
+an error from Cargo.
+
+For each rustc flag specified by a Rust developer, Cargo will pass the flag through to the invocation of rustc for this crate.
+This includes all invocations of rustc for a given crate including all targets, such as, lib, bin, examples and the test targets
+being built. For example, a given crate `foo` that contains a lib, bin, examples and test target:
+
+Cargo.toml:
+```toml
+[package]
+name = "foo"
+version = "0.1.0
+```
+
+cargo CLI (Output lines have been removed for simplicity):
+```
+cargo test --rustflag=-Cinstrument-coverage
+
+Compiling foo v0.1.0 (D:\projects\foo)
+    Running `rustc --crate-name foo --edition=2021 src\lib.rs ... --crate-type lib -Cinstrument-coverage`
+    Running `rustc --crate-name foo --edition=2021 src\lib.rs --test ... -Cinstrument-coverage`
+    Running `rustc --crate-name bin1 --edition=2021 src\bin\bin1.rs ... -Cinstrument-coverage`
+    Running `rustc --crate-name example --edition=2021 examples\example.rs... --crate-type bin -Cinstrument-coverage`
+    Running `rustc --crate-name foo --edition=2021 src\main.rs --test ... -Cinstrument-coverage`
+Finished test [unoptimized + debuginfo] target(s) in 1.51s
+    Running `.../debug/deps/foo-669448d9b4043564`
+
+running 1 test
+test tests::it_works ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+    Running `.../target/debug/deps\bin1-88f2f72473b4679f`
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+    Running `.../target/debug/deps/foo-53f9cd70087d575a`
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+Doc-tests foo
+    Running `rustdoc --edition=2021 --crate-type lib --crate-name foo --test ...`
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+```
+
+In the example above, the only invocation which does not include the user specified rustc flags is the invocation of
+`rustdoc`. Since `rustdoc` flags are treated different than normal `rustflags`, the flags specifed through `--rustflag=<RUSTFLAG>`
+will not be passed to the invocation of `rustdoc`.
+
+## Build scripts and proc-macros
+
+The new `--rustflag=<RUSTFLAG>` feature will only be passed to targets that are not being compiled for the host. Build scripts and
+proc-macros which are being used a dependency for the current crate
 
 
 # Drawbacks
@@ -137,11 +214,39 @@ cargo option would only affect the root crate or the members of the current work
 # Unresolved questions
 [unresolved-questions]: #unresolved-questions
 
+1. Should the cargo feature `--rustflag=<RUSTFLAG>` be dependent on the existing unstable cargo feature `-Ztarget-applies-to-host` to determine whether or not the rustc flags specified by the user on the cargo CLI should be passed to the invocation of rustc for build scripts defined in the given crate?
+
 # Future possibilities
 [future-possibilities]: #future-possibilities
 
 ## Crate specific --rustflag
 
+A natural extension to this feature would be to add support for specifying specific crates a Rust compiler flag should be enabled for.
+For example, if in a given workspace there exists 2 default members, `foo` and `bar`, having the ability to set rustc flags only for the
+crate `foo` and not for the crate `bar`. An example of said feature would be:
+
+cargo CLI (Output lines have been removed for simplicity):
+```
+cargo build --rustflag=foo:-Cstrip=debuginfo
+```
+
+This would result in the `foo` crate stripping away all debuginfo and not included in the generated binary and/or `PDB`. This would not have the same effect on the `bar` crate or any other upstream dependencies.
+
 ## --rustflag support for dependencies
 
-## --rustflag support for build scripts and proc-macros
+Allowing a Rust developer to manually specify which rustflags are passed to upstream dependencies seems like a natural extension of this
+feature. As with the above mentioned future possibilities, `--rustflag=<crate_name>:<RUSTFLAG>`, would be sufficient for adding support
+for specifying rustc flags for upstream dependency. If a crate is selected which does not exist, or which has not been pulled in as a
+dependency, then an warning would be raised notifying the user that the specified rustc flag was unused. A simple use case for this would
+be allowing the instrumentation of targeted upstream dependencies or local dependencies through the use of the `-C instrument-coverage`
+rustc feature.
+
+## --rustflag support for build scripts
+
+The feature proposed by this RFC does not extend any support to passing Rust compiler flags specified by the `--rustflag` feature to
+invocations of rustc when compiling build scripts. There is support today for setting rustc flags for build scripts depending on certain
+configuration settings such as, whether the host and target triples match, and/or if the unstable `-Ztarget-applies-to-host` flag has
+been enabled and the `[host]`/`[build]` sections have the `rustflags` manifest key set.
+
+Allowing a mechanism for setting rustc flags for build scripts via the `--rustflag` cargo feature would extend the flexibility of
+setting compiler flags from the cargo CLI.
