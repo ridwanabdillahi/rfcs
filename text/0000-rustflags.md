@@ -10,24 +10,26 @@ One paragraph explanation of the feature.
 
 This RFC aims to improve the experience of enabling Rust compiler flags for specific crates when building Rust projects
 by adding a new option, `--rustflag=<RUSTFLAG>`. This would have the same effect as `cargo rustc -- <RUSTFLAG>` but would
-also be available for use by other subcommands such as `bench, build, check, run` and `test`.
+also be available for use by other subcommands such as `bench, build, check, run` and `test` thus allowing a Rust project
+to be built and tested for instance without forcing a new compilation and losing the rustflags that were set when invoking
+`cargo rustc`.
 
 # Motivation
 [motivation]: #motivation
 
-Why are we doing this? What use cases does it support? What is the expected outcome?
-
 Today, there currently exists multiple ways of specifying `RUSTFLAGS` to pass to invocations of the Rust compiler.
 All of the existing ways have the limitation of not being able to specify which invocation of rustc the compiler flag
-is set for.
-
+is set for. When a Rust developer tries to enable a Rust compiler option for the current crate being built, they will also
+have this compiler option set for all dependencies including the standard libraries. With the feature proposed by this RFC,
+a Rust developer can simply use Cargo CLI to pass rustflags for a given crate without the need to worry about how other crates
+might be affected.
 
 # Guide-level explanation
 [guide-level-explanation]: #guide-level-explanation
 
-This RFC proposes adding a new cargo flag, `--rustflag`, which accepts a pairing of `crate:RUSTFLAG` that instructs cargo to set the
-given flag when invoking rustc for the crate specified. This allows setting a Rust compiler flag for local crates as well as upstream
-dependencies. Setting a specific Rust compiler flag for the standard libraries is currently out of scope for this RFC.
+This RFC proposes adding a new cargo flag, `--rustflag=<RUSTFLAG>`, which would instruct cargo to pass the given flag when invoking rustc
+for the current crate being compiled. This allows setting a Rust compiler flag for local crates only and not forcing this upon
+dependencies including transitive dependencies and standard libraries.
 
 ## An example: code coverage
 
@@ -116,7 +118,7 @@ the covers uses the `clap` crate to parse the command line invocation and set th
 compiler flags start with a `-`, without the `=` delimitter `clap` parses the rustc flag as a new Cargo flag instead leading to
 an error from Cargo.
 
-For each rustc flag specified by a Rust developer, Cargo will pass the flag through to the invocation of rustc for this crate.
+For each rustc flag specified by a Rust developer, Cargo will pass the flag through to the invocation of rustc for the current crate.
 This includes all invocations of rustc for a given crate including all targets, such as, lib, bin, examples and the test targets
 being built. For example, a given crate `foo` that contains a lib, bin, examples and test target:
 
@@ -171,9 +173,9 @@ will not be passed to the invocation of `rustdoc`.
 
 ## Build scripts
 
-The new `--rustflag=<RUSTFLAG>` feature will not be passed to build scripts that are being compiled and run on the host. This currently
-out of scope for this RFC since rustc flags are treated differently for build scripts depending on cargo configuration settings as well
-as the target specified.
+The new `--rustflag=<RUSTFLAG>` feature will not be passed to the invocation of rustc for build scripts that are being compiled and run
+on the host. This currently out of scope for this RFC since rustc flags are treated differently for build scripts depending on cargo
+configuration settings as well as the target specified.
 
 ## Integration with existing RUSTFLAGS
 
@@ -185,16 +187,21 @@ In Cargo there exists numerous ways to specify which Rust compiler flags should 
 4. `target.cfg(..).rustflags` from the config (.cargo/config)
 5. `host.*.rustflags` from the config (.cargo/config) if compiling a host artifact or without `--target`
 6. `build.rustflags` from the config (.cargo/config)
-7. `profile.rustflags` from the cargo manifest (Cargo.toml)
 
-The `--rustflag` values would be appended to set of rustflags calculated from the options listed above. If the same Rust compiler flags
-are specified multiple times through different means which are not allowed, a compiler error would be generated.
+The `--rustflag` values would override the set of rustflags calculated from the options listed above only for the current crate or the set of crates in the workspace. All upstream and transitive dependencies will still use the rustflags calculated from the environment
+variables and cargo config.
+
+As of today, the `profile.rustflags` manifest key is appended to the set of rustflags calculated from the environment variables and
+cargo config settings. With the addition of the `--rustflag=<RUSTFLAG>` feature, the `profile.rustflags` compiler options will work in
+the same manner and be appended to the invocation of `rustc`. The user specified command line rustflags will not override the values of
+the `profile.rustflags` values.
 
 # Drawbacks
 [drawbacks]: #drawbacks
 
-Multiple ways of setting rustflags already, this would add another way and would have to work
-with all of the existing ways.
+There currently exists multiple ways of setting Rust compiler flags when building a Rust project with Cargo. As we mentioned
+earlier, there about 7 different ways that already exist today and this RFC is proposing to add yet another option. This could
+lead to confusion about the best way to set Rust compiler flags in the community.
 
 # Rationale and alternatives
 [rationale-and-alternatives]: #rationale-and-alternatives
@@ -202,7 +209,7 @@ with all of the existing ways.
 ## Rationale
 
 This design provides a simple mechanism to specify the set of Rust compiler flags
-a given crate should be built with. This design also has teh benefit of not forcing
+a given crate should be built with. This design also has the benefit of not forcing
 all crates in the dependency graph, including upstream dependencies and transitive
 dependencies, to be built in the same manner. As with the given example above, setting
 the rustc flag `-C instrument-coverage` forces the compiler to do an extra amount
