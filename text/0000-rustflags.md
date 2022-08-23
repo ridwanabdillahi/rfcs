@@ -41,7 +41,8 @@ as well as the standard libraries. There are a couple of other options for setti
 same issue as using the `RUSTFLAGS` environment variable.
 
 Another way of setting a rustc flag for a specific crate is through the `cargo rustc` subcommand. A Rust compiler flag can be passed
-directly to rustc by setting it as an argument directly to the rustc compiler. For example:
+to the invocation of rustc by cargo for the current crate being built by setting it as an argument directly to the rustc compiler.
+For example:
 
 ```
 cargo rustc -- -Cinstrument-coverage
