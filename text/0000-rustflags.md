@@ -6,8 +6,6 @@
 # Summary
 [summary]: #summary
 
-One paragraph explanation of the feature.
-
 This RFC aims to improve the experience of enabling Rust compiler flags for specific crates when building Rust projects
 by adding a new option, `--rustflag=<RUSTFLAG>`. This would have the same effect as `cargo rustc -- <RUSTFLAG>` but would
 also be available for use by other subcommands such as `bench, build, check, run` and `test` thus allowing a Rust project
@@ -33,7 +31,7 @@ dependencies including transitive dependencies and standard libraries.
 
 ## An example: code coverage
 
-The Rust compiler currently supports instrumenting Rust built libraries to measure code coverage for a given crate through tests.
+The Rust compiler supports instrumenting Rust built libraries to measure code coverage for a given crate through tests.
 In order to instruct rustc to instrument a given crate, a user would need to pass the Rust compiler flag `-Cinstrument-coverage`
 to the invocation of rustc when building said crate. This can be done via the `RUSTFLAGS` environment variable but this would have
 the side effect of enabling this flag for every crate in the dependency graph including upstream dependencies, transitive dependencies,
@@ -175,7 +173,7 @@ will not be passed to the invocation of `rustdoc`.
 ## Build scripts
 
 The new `--rustflag=<RUSTFLAG>` feature will not be passed to the invocation of rustc for build scripts that are being compiled and run
-on the host. This currently out of scope for this RFC since rustc flags are treated differently for build scripts depending on cargo
+on the host. This is currently out of scope for this RFC since rustc flags are treated differently for build scripts depending on cargo
 configuration settings as well as the target specified.
 
 ## Integration with existing RUSTFLAGS
@@ -223,19 +221,37 @@ cargo option would only affect the root crate or the members of the current work
 
 ### Alternative 1: existing RUSTFLAGS manifest keys
 
+Accepting this alternative would mean changes would not be made to either cargo or rustc. The existing behavior
+does allow for a way to set custom Rust compiler flags that would be passed to the compiler at the invocation of rustc
+by cargo. This would still leave Cargo in a place where a Rust developer would not be able to enable/disable rustc flags
+on a crate by crate basis. As with the example of running code coverage for a Rust project, this would mean all libraries
+would be instrumented leading to larger code coverage files and more compilation time spent by the compiler.
+
 ### Alternative 2: new build.<crate_name>.rustflags manifest key
+
+This alternative proposes another way to implement such a feature that would allow a Rust developer to specify through cargo
+configuration files exactly which crate enables which Rust compiler flag. There already exists a `rustflags` key under the
+`[build]` section of the cargo configuraiton file and this would add to that existing pattern to enable selective enabling
+rustc flags. An issue with this approach is that changes to the config file is more cumbersome than simply adding commands at
+the CLI. This approach I believe would also make it the feature more complicated in cases where a Rust developer wants to
+enable a specific flag for a set of crates such as the crates within a given workspace. This approach would mean each crate
+would need a separate section in the cargo configuration file to enable said rustc flag.
 
 # Prior art
 [prior-art]: #prior-art
 
-### Rustflags manifest keys
+As mentioned above there are multiple ways of setting rustflags that exist today but none of the options are suitable for
+selectivly enabling flags on a crate by crate basis. The `RUSTFLAGS` environment variable as well as the `<section>.rustflags`
+manifest key force a user to opt in to enabling the given rustc flag for all crates in the dependency graph.
 
-### cargo rustc subcommand
+`cargo rustc` allows a user to enable a Rust compiler flag specifically for the root crate being built but any subsequent runs
+of a cargo subcommand forces a re-compilation and wipes out the enabled flags. This also doesn't work when trying to set rustflags
+for a simple `cargo run` and especially when running tests via `cargo test`.
 
 # Unresolved questions
 [unresolved-questions]: #unresolved-questions
 
-1. Should the cargo feature `--rustflag=<RUSTFLAG>` be dependent on the existing unstable cargo feature `-Ztarget-applies-to-host` to determine whether or not the rustc flags specified by the user on the cargo CLI should be passed to the invocation of rustc for build scripts defined in the given crate?
+1. Should the cargo feature `--rustflag=<RUSTFLAG>` be dependent on the existing unstable cargo feature `-Ztarget-applies-to-host` to determine whether or not the rustc flags specified by the user on the cargo CLI should be passed to the invocation of rustc for build scripts defined in a given crate?
 
 # Future possibilities
 [future-possibilities]: #future-possibilities
