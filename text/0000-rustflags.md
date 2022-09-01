@@ -1,4 +1,4 @@
-- Feature Name: `cargo_cli_rustflag`
+- Feature Name: `cargo_cli_rustflags`
 - Start Date: 2022-08-18
 - RFC PR: [rust-lang/rfcs#0000](https://github.com/rust-lang/rfcs/pull/0000)
 - Rust Issue: [rust-lang/rust#0000](https://github.com/rust-lang/rust/issues/0000)
@@ -8,9 +8,10 @@
 
 This RFC aims to improve the experience of enabling Rust compiler flags for specific crates when building Rust projects
 by adding a new option, `--rustflags <RUSTFLAGS>`. This would have the same effect as `cargo rustc -- <RUSTFLAGS>` but would
-also be available for use by other subcommands such as `bench, build, check, run` and `test`. This allows a Rust project
-to be built and tested for instance without forcing a new compilation and losing the rustflags that were set when invoking
-`cargo rustc`.
+also be available for use by other subcommands such as `bench, build, check, doc, fix, install, package, run` and `test`.
+This allows a Rust project to be built and tested for instance without forcing a new compilation and losing the rustflags that
+were set when invoking `cargo rustc`. This option sets `<RUSTFLAGS>` for the current crate only and not all crates in the
+dependency graph.
 
 # Motivation
 [motivation]: #motivation
@@ -19,8 +20,8 @@ Today, there currently exists multiple ways of specifying `RUSTFLAGS` to pass to
 All of the existing ways have the limitation of not being able to specify which invocation of rustc the compiler flag
 is set for. When a Rust developer tries to enable a Rust compiler option for the current crate being built, they will also
 have this compiler option set for all dependencies. With the feature proposed by this RFC, a Rust developer can simply use
-the cargo CLI to pass rustflags for a given crate without having to worry about how other crates in dependency graph might be
-affected.
+the cargo CLI to pass rustflags for the current crate without having to worry about how other crates in dependency graph
+might be affected.
 
 Some of the existing support for rustflags in Cargo are:
 
@@ -71,6 +72,15 @@ This example will pass the flag `-C instrument-coverage` directly to rustc but o
 after this will cause a new build of the crate without the flag. For example running `cargo test` will cause the crate to be re-compiled
 without the rustc flag `-C instrument-coverage` specified. This would cause tests to be run without first instrumenting any of the
 libraries thus losing out on collecting any code coverage.
+
+## Other examples: debuginfo, saving temp files
+
+Other examples of this include having the ability to set the debuginfo level for only a single crate to save on binary size. One scenario
+where this is helpful is debugging tests that are not having the expected behavior. This feature will allow a Rust developer to set the
+debuginfo level for the current crate and have full debugging symbols but still allow all other dependencies to be fully optimized. This
+will save on both compilation time and binary size.
+
+As with the previous example, being able to specify only saving the temporary files for the current crate as opposed to all crates in the dependency graph. This will save on disk space by not having all of the unnecessary temp files being saved on each invocation of the Rust compiler.
 
 ## --rustflags
 
@@ -158,15 +168,15 @@ Finished dev [unoptimized + debuginfo] target(s) in 0.98s
 [reference-level-explanation]: #reference-level-explanation
 
 As mentioned above a new Cargo option, `--rustflags <RUSTFLAGS>`, would be added to several of the existing cargo subcommands.
-Those subcommands would be, `bench, build, check, run` and `test`. The `--rustflags <RUSTFLAGS>` option will require the use of
-a [value terminator](https://docs.rs/clap/3.2.18/clap/builder/struct.Arg.html#method.value_terminator), `;`. Cargo under
-the covers uses the `clap` crate to parse the command line invocation and set the relevant options passed to it. Since all rust
-compiler flags start with a `-`, this change instructs the `clap` parser to allow values that begin with a `-` for this new option.
-Without using the `;` value terminator at the end of the `<RUSTFLAGS>` list, any cargo flags that come after this would be interpreted
-as more rustflags instead, leading to potential errors from the Rust compiler.
+Those subcommands would be, `bench, build, check, doc, fix, install, package, run` and `test`. The `--rustflags <RUSTFLAGS>` option
+will require the use of a [value terminator](https://docs.rs/clap/3.2.18/clap/builder/struct.Arg.html#method.value_terminator), `;`.
+Cargo under the covers uses the `clap` crate to parse the command line invocation and set the relevant options passed to it. Since all
+rust compiler flags start with a `-`, the value terminator makes it possible for the `clap` parser to allow values that begin with a `-`
+and still allow other cargo options to follow the the `;`. Without using the `;` value terminator at the end of the `<RUSTFLAGS>` list,
+any cargo flags that come after this would be interpreted as more rustflags, leading to potential errors from the Rust compiler.
 
-This feature also support quoting a rustflag in the same manner the Rust compiler does. This means that any `<RUSTFLAG>` which would
-need to wrap its value with quotes can be done so via the `--rustflag` option. This would allow supporting flags that may contain spaces
+This feature also support quoting a rustflag in the same manner the Rust compiler does. This means that any `<RUSTFLAGS>` which would
+need to wrap its value with quotes can be done so via the `--rustflags` option. This would allow supporting flags that may contain spaces
 or commas.
 
 For each rustc flag specified by a Rust developer, Cargo will pass the flag through to the invocation of rustc for the current crate.
@@ -278,7 +288,7 @@ rustc flags.
 
 This approach has the benefit of extensibility. This meaning it can easily be expanded upon to support crate specific rustflags
 for the root crate being built as well dependencies in the dependency graph by updating the crate name in the manifest section.
-For instance, supporting `build.foo.rustflags` would also make it simpler to support `build.dependency.rustflags` as well.
+For instance, supporting `build.foo.rustflags` would also make it simpler to support `build.<dependency>.rustflags` as well.
 
 An issue with this approach is that changes to the config file is more cumbersome than simply adding commands at
 the CLI. This approach I believe would also make the feature more complicated in cases where a Rust developer wants to
@@ -329,7 +339,7 @@ effect on the `bar` crate or any other upstream dependencies.
 ## --rustflags support for dependencies
 
 Allowing a Rust developer to manually specify which rustflags are passed to upstream dependencies seems like a natural extension of this
-feature. As with the above mentioned future possibilities, `--rustflags <crate_name>:<RUSTFLAG>`, would be sufficient for adding support
+feature. As with the above mentioned future possibilities, `--rustflags <crate_name>:<RUSTFLAGS>`, would be sufficient for adding support
 for specifying rustc flags for upstream dependency. If a crate is selected which does not exist, or which has not been pulled in as a
 dependency, then an warning would be raised notifying the user that the specified rustc flag was unused. A simple use case for this would
 be allowing the instrumentation of targeted upstream dependencies or local dependencies through the use of the `-C instrument-coverage`
